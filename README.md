@@ -14,6 +14,12 @@ cd pre-flight
 python3 install.py --repo /absolute/path/to/your-project
 ```
 
+Or install with default team rules template (`.pre-flight/rules.md`):
+
+```sh
+python3 install.py --repo /absolute/path/to/your-project --init-rules
+```
+
 Or install for one CLI:
 
 ```sh
@@ -41,7 +47,7 @@ Commit installed files to your team repository if you want teammates to use them
 
 ## Example requests
 
-- “Use pre-flight to review all my changes against origin/main. Do not edit.”
+- “Use pre-flight to review all my changes against origin/dev. Do not edit.”
 - “Use pre-flight on staged changes only.”
 - “Use pre-flight, then apply the lint fix and add a regression test for the confirmed bug.”
 
@@ -52,9 +58,10 @@ AI concerns. Fixes are proposed by default and applied when requested.
 ## Standalone helper
 
 ```sh
-python3 pre-flight/scripts/preflight.py collect --repo /path/to/project --base origin/main
+python3 pre-flight/scripts/preflight.py collect --repo /path/to/project --base origin/dev
 python3 pre-flight/scripts/preflight.py collect --repo /path/to/project --scope staged
 python3 pre-flight/scripts/preflight.py check --repo /path/to/project --name types --timeout 120 -- npm run typecheck
+python3 pre-flight/scripts/preflight.py check --repo /path/to/project --name test --env TZ=UTC -- pnpm test
 ```
 
 Inspect repository scripts before running them. The helper does not determine
@@ -63,10 +70,16 @@ commands such as npm can invoke lifecycle scripts and other programs.
 
 Scopes: `all` (default), `branch`, `staged`, `working`. Collection includes file
 names and metadata only, avoiding automatic ingestion of untracked secrets.
-Base discovery tries origin/HEAD, origin/main, origin/master, main, master;
-pass `--base` for develop or other branches. Local refs can be stale; no fetch is
-performed. Missing HEAD/base produces an explicit error. Branch and index
+Base discovery tries origin/HEAD, origin/main, origin/dev, origin/develop, origin/master,
+main, dev, develop, master; pass `--base` for other branches. Local refs can be stale;
+no fetch is performed. Missing HEAD/base produces an explicit error. Branch and index
 review do not change the fact that check commands execute on the current worktree.
+
+Metadata collection also surfaces:
+- `branch`: current active branch name
+- `commits`: list of commits between merge-base and HEAD
+- `commit_hygiene_warnings`: automated warnings for WIP/fixup/squash subjects and branch ticket prefix mismatches
+- `affected_modules`: affected apps, packages, or top-level modules in monorepos to allow scoped test execution
 
 JSON check statuses: PASS, FAIL, TIMEOUT, ERROR. Output is capped at 16 KB;
 truncation is disclosed. Exit codes: 0 for successful collection/passed check,
@@ -79,9 +92,10 @@ reported as SKIPPED, never clean.
 
 ## Team rules
 
-Optionally add `.pre-flight/rules.md` to the target repository. Include concrete
-rules, their scope and rationale. Example: “New authenticated campaign endpoints
-must test cross-tenant access denial.” No DanAds policies are assumed.
+Add `.pre-flight/rules.md` to the target repository (scaffolded automatically with
+`--init-rules` from `pre-flight/references/rules.template.md`). Include concrete
+rules, architectural boundaries, test non-vacuity rules, and MR conventions.
+No DanAds policies are assumed by default.
 
 ## Validation and limits
 

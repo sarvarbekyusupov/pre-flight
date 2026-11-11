@@ -11,6 +11,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--repo', required=True, type=Path)
     parser.add_argument('--agent', choices=[*TARGETS, 'all'], default='all')
+    parser.add_argument('--init-rules', action='store_true', help='Initialize .pre-flight/rules.md from template if not present')
     args = parser.parse_args()
     root = args.repo.expanduser().resolve()
     if not root.is_dir():
@@ -34,6 +35,17 @@ def main():
         raise
     for destination in installed:
         print(f'Installed: {destination}')
+
+    if args.init_rules:
+        rules_dir = root / '.pre-flight'
+        rules_file = rules_dir / 'rules.md'
+        template_file = source / 'references' / 'rules.template.md'
+        if not rules_file.exists() and template_file.exists():
+            rules_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(template_file, rules_file)
+            print(f'Initialized rules: {rules_file}')
+        elif rules_file.exists():
+            print(f'Existing rules file preserved: {rules_file}')
 
 
 if __name__ == '__main__':
