@@ -34,8 +34,12 @@ def main():
     backups = []
     timestamp = int(time.time())
     
+    # Use a staging directory on the same filesystem to prevent cross-device (EXDEV) errors
+    staging_root = root / '.pre-flight' / 'staging'
+    staging_root.mkdir(parents=True, exist_ok=True)
+    
     try:
-        with tempfile.TemporaryDirectory() as staging_dir:
+        with tempfile.TemporaryDirectory(dir=staging_root) as staging_dir:
             staging_path = Path(staging_dir)
             staged_dests = []
             
@@ -49,11 +53,10 @@ def main():
             try:
                 for destination, staged in staged_dests:
                     backup = None
-                    if destination.exists() and args.force:
-                        if destination.is_symlink():
-                            destination.unlink()
-                        else:
+                    if destination.exists() or destination.is_symlink():
+                        if args.force:
                             backup = destination.with_name(f"{destination.name}.bak.{timestamp}")
+                            # rename works on symlinks too (backs up the link itself)
                             destination.rename(backup)
                             backups.append((destination, backup))
                     
@@ -64,19 +67,29 @@ def main():
             except Exception:
                 # Rollback Phase 2: restore backups and remove partial installations
                 for destination in installed:
-                    if destination.exists():
-                        shutil.rmtree(destination)
+                    if destination.exists() or destination.is_symlink():
+                        if destination.is_symlink():
+                            destination.unlink()
+                        else:
+                            shutil.rmtree(destination)
                 for original, backup in backups:
-                    if backup.exists():
+                    if backup.exists() or backup.is_symlink():
                         backup.rename(original)
                 raise
     except Exception:
         raise
+    finally:
+        # Clean up the staging root if it's empty
+        if staging_root.exists() and not any(staging_root.iterdir()):
+            staging_root.rmdir()
     
     # Cleanup successful backups
     for original, backup in backups:
-        if backup.exists():
-            shutil.rmtree(backup)
+        if backup.exists() or backup.is_symlink():
+            if backup.is_symlink():
+                backup.unlink()
+            else:
+                shutil.rmtree(backup)
 
     for destination in installed:
         print(f'Installed: {destination}')

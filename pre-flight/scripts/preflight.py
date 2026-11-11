@@ -63,7 +63,7 @@ def collect(repo, scope='all', base=None, rules_filters=None):
         result['commits'] = commits
 
         wip_pattern = re.compile(r'^(wip\b|fixup!|squash!|backup\b|tmp\b|temp\b|review fixes\b)', re.IGNORECASE)
-        cc_pattern = re.compile(r'^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)]+\))?: ')
+        cc_pattern = re.compile(r'^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)]+\))?(!)?:\s')
         ticket_match = re.match(r'^(?:feature|bugfix|hotfix)/([A-Z]{2,}-[0-9]+)', branch or '')
         ticket_key = ticket_match.group(1) if ticket_match else None
 
@@ -72,15 +72,15 @@ def collect(repo, scope='all', base=None, rules_filters=None):
             subj = c['subject']
             if wip_pattern.search(subj):
                 hygiene_warnings.append(f"Commit {c['sha'][:8]} has work-in-progress subject: '{subj}'")
+                continue
             
-            has_ticket = ticket_key and (subj.startswith(f"{ticket_key}. ") or subj.startswith(f"{ticket_key}: "))
-            has_cc = bool(cc_pattern.match(subj))
-            
-            if not has_ticket and not has_cc:
-                if ticket_key:
+            # Format enforcement is OPT-IN: only active if the branch is a ticket branch.
+            if ticket_key:
+                has_ticket = subj.startswith(f"{ticket_key}. ") or subj.startswith(f"{ticket_key}: ")
+                has_cc = bool(cc_pattern.match(subj))
+                
+                if not has_ticket and not has_cc:
                     hygiene_warnings.append(f"Commit {c['sha'][:8]} lacks ticket '{ticket_key}' prefix or Conventional Commit format: '{subj}'")
-                else:
-                    hygiene_warnings.append(f"Commit {c['sha'][:8]} does not follow Conventional Commits format: '{subj}'")
 
         if hygiene_warnings:
             result['commit_hygiene_warnings'] = hygiene_warnings

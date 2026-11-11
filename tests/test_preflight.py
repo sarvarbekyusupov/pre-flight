@@ -1,5 +1,8 @@
 import importlib.util
+import json
+import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -106,8 +109,8 @@ class PreflightTests(unittest.TestCase):
         r = pf.collect(self.repo)
         self.assertEqual(r['branch'], 'bugfix/OB-213')
         self.assertEqual(len(r['commits']), 2)
-        self.assertTrue(any('work-in-progress' in w for w in r.get('commit_hygiene_warnings', [])))
-        self.assertTrue(any("lacks ticket 'OB-213' prefix or Conventional Commit format:" in w for w in r.get('commit_hygiene_warnings', [])))
+        warnings = r.get('commit_hygiene_warnings', [])
+        self.assertTrue(any("has work-in-progress subject: 'wip: fixup test'" in w for w in warnings))
 
     def test_affected_modules(self):
         (self.repo / 'apps' / 'gam').mkdir(parents=True)
@@ -145,10 +148,31 @@ class PreflightTests(unittest.TestCase):
         self.git('commit', '-am', 'feat(core): add pricing')
         r = pf.collect(self.repo)
         warnings = r.get('commit_hygiene_warnings', [])
-        self.assertTrue(any('fixup!' in w for w in warnings))
-        self.assertTrue(any('squash!' in w for w in warnings))
+        self.assertTrue(any("has work-in-progress subject: 'fixup! OB-999. some fix'" in w for w in warnings))
+        self.assertTrue(any("has work-in-progress subject: 'squash! OB-999. another fix'" in w for w in warnings))
         self.assertFalse(any('feat(core)' in w for w in warnings))
 
+    def test_commit_hygiene_breaking_change(self):
+        self.git('checkout', '-b', 'bugfix/OB-999')
+        (self.repo / 'price.py').write_text('price = 10\n')
+        self.git('commit', '-am', 'feat!: breaking change')
+        (self.repo / 'price.py').write_text('price = 11\n')
+        self.git('commit', '-am', 'fix(api)!: another breaking')
+        r = pf.collect(self.repo)
+        self.assertEqual(len(r.get('commit_hygiene_warnings', [])), 0)
+
+    def test_installer_recovery(self):
+        # Install first
+        subprocess.run([sys.executable, str(ROOT / 'install.py'), '--repo', str(self.repo), '--init-rules'], check=True)
+        # Mock failure by turning a destination directory into a file, causing rename to fail
+        dest_file = self.repo / '.claude/skills/pre-flight'
+        shutil.rmtree(dest_file)
+        dest_file.write_text('blocked')
+        # Attempt force install
+        res = subprocess.run([sys.executable, str(ROOT / 'install.py'), '--repo', str(self.repo), '--force'], capture_output=True)
+        self.assertNotEqual(res.returncode, 0)
+        self.assertTrue(dest_file.is_file()) # Remained as the file (rollback succeeded)
+        self.assertTrue((self.repo / '.gemini/skills/pre-flight/SKILL.md').exists()) # Untouched and restored
 
 
 if __name__ == '__main__':
