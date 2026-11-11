@@ -1,21 +1,24 @@
 # Pre-Flight Repository Rules Template
-<!-- Copy to .pre-flight/rules.md in your repository root and adapt to your project standards -->
 
-## 1. Architectural Integrity & Decoupling
-- **No Domain Leaks in Generic Layers**: Shared utilities, orchestrators, and generic mappers must remain agnostic. They must never hardcode domain-specific concepts or keys.
-- **Explicit Interfaces**: Domain-specific behaviors must be declared via explicit interfaces, factory contracts, or configuration injected into generic pipelines.
-- **No Magic Strings**: Use exported constants or enums for business-critical identifiers, event names, and status codes.
+Adapt these examples to your project. They are not enforced policy until adopted.
 
-## 2. Test Integrity & Failure Path Coverage
-- **No Vacuous Tests**: A passing test is not enough. Verify that test fixtures actually contain the necessary data to trigger the logic under test (e.g., if testing a merge algorithm, the fixture must contain mergeable inputs).
-- **Semantic Test Organization**: Place test cases in their correct conceptual suite or `describe` block.
-- **Agnostic Core Fixtures**: Core service and domain tests should test behavior generically rather than coupling assertions to third-party integrations, unless explicitly testing the adapter.
-- **Timezone Consistency**: Run test suites under `TZ=UTC` to match CI runners and prevent time-sensitive assertion failures.
+## Required checks
+- List actual CI jobs, package scopes, commands, runtime versions and required services.
+- Describe checks that cannot run locally and how their results will be verified.
 
-## 3. Commit & Merge Request Hygiene
-- **Branch Naming**: Branch names should follow repository conventions (e.g., `feature/<TICKET>`, `bugfix/<TICKET>`, or short kebab-case descriptions).
-- **Commit Messages**: Each commit subject must follow the project standard (e.g., Ticket prefix `<TICKET>. <Subject>` or Conventional Commits `feat: ...`, `fix: ...`).
-- No work-in-progress commit messages (`wip`, `fixup!`, `squash!`, `temp`, `backup`). Squash or reword locally before review.
+## Architecture
+- Document existing dependency boundaries and compatibility contracts.
+- Report concrete violations; do not require abstractions solely for style.
 
-## 4. Monorepo Verification & Scoping
-- In large monorepos, use targeted testing (e.g., `pnpm --filter <app> test`) to ensure fast feedback, but remain aware that changing core libraries may impact downstream apps not explicitly listed.
+## Testing
+- Fixtures must exercise the changed behavior and assertions must detect regressions.
+- Cover meaningful boundaries and failure paths. Match the CI timezone when required.
+
+## Commit hygiene (optional)
+- Default format enforcement is off; WIP detection remains advisory.
+- Adopt `--commit-policy conventional` or `--commit-policy ticket-or-conventional` only if this repository requires it.
+- Rewrite history only when explicitly authorized; preserve unrelated staged changes.
+
+## Monorepos
+- Changed folders are hints, not a dependency graph. Include downstream consumers
+  and root configuration changes when selecting verification.

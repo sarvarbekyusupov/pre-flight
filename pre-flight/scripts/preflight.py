@@ -24,14 +24,16 @@ def paths(repo, *args):
     return [os.fsdecode(p) for p in git(repo, *args).split(b'\0') if p]
 
 
-def collect(repo, scope='all', base=None, rules_filters=None):
+def collect(repo, scope='all', base=None, rules_filters=None, commit_policy='off'):
+    if commit_policy not in ('off', 'conventional', 'ticket-or-conventional'):
+        raise ValueError('Unknown commit policy.')
     root = Path(os.fsdecode(git(repo, 'rev-parse', '--show-toplevel')).strip())
     head = git(root, 'rev-parse', '--verify', 'HEAD', optional=True)
     if head is None:
         raise ValueError('Repository has no HEAD commit; create an initial commit before review.')
     branch_raw = git(root, 'rev-parse', '--abbrev-ref', 'HEAD', optional=True)
     branch = branch_raw.decode().strip() if branch_raw else None
-    result = {'repository': str(root), 'branch': branch, 'scope': scope, 'head': head.decode().strip(),
+    result = {'commit_policy': commit_policy, 'repository': str(root), 'branch': branch, 'scope': scope, 'head': head.decode().strip(),
               'base': None, 'merge_base': None, 'layers': {}, 'warnings': [],
               'conflicts': paths(root, 'diff', '--name-only', '--diff-filter=U', '-z')}
     if scope in ('all', 'branch'):
@@ -74,13 +76,14 @@ def collect(repo, scope='all', base=None, rules_filters=None):
                 hygiene_warnings.append(f"Commit {c['sha'][:8]} has work-in-progress subject: '{subj}'")
                 continue
             
-            # Format enforcement is OPT-IN: only active if the branch is a ticket branch.
-            if ticket_key:
-                has_ticket = subj.startswith(f"{ticket_key}. ") or subj.startswith(f"{ticket_key}: ")
+            # Branch names supply ticket context only; they never enable enforcement.
+            if commit_policy != 'off':
+                has_ticket = (commit_policy == 'ticket-or-conventional' and ticket_key and
+                              (subj.startswith(f"{ticket_key}. ") or subj.startswith(f"{ticket_key}: ")))
                 has_cc = bool(cc_pattern.match(subj))
                 
                 if not has_ticket and not has_cc:
-                    hygiene_warnings.append(f"Commit {c['sha'][:8]} lacks ticket '{ticket_key}' prefix or Conventional Commit format: '{subj}'")
+                    hygiene_warnings.append(f"Commit {c['sha'][:8]} violates explicit {commit_policy} policy: '{subj}'")
 
         if hygiene_warnings:
             result['commit_hygiene_warnings'] = hygiene_warnings
@@ -179,6 +182,7 @@ def main():
     c.add_argument('--repo', default='.')
     c.add_argument('--scope', choices=['all', 'staged', 'working', 'branch'], default='all')
     c.add_argument('--base')
+    c.add_argument('--commit-policy', choices=['off', 'conventional', 'ticket-or-conventional'], default='off')
     c.add_argument('--rules', action='append', default=[], help='Filter rules.md by header substring')
     r = sub.add_parser('check')
     r.add_argument('--repo', default='.')
@@ -189,7 +193,7 @@ def main():
     args = parser.parse_args()
     try:
         if args.action == 'collect':
-            result = collect(args.repo, args.scope, args.base, rules_filters=args.rules)
+            result = collect(args.repo, args.scope, args.base, rules_filters=args.rules, commit_policy=args.commit_policy)
             code = 1 if result['conflicts'] else 0
         else:
             command = args.command[1:] if args.command[:1] == ['--'] else args.command

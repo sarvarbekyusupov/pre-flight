@@ -17,8 +17,8 @@ Missing optional chaining and raw SQL are not inherently wrong. Migration locks 
 
 ### Specific Review Scrutiny:
 - **Test Vacuity**: Scrutinize new or updated tests. Does the fixture supply the data needed to actually execute the changed branch? (e.g. if testing trait merging, parent traits must exist in the fixture). If a test passes even when the production logic is commented out, it is vacuous.
-- **Architectural Leaks**: Ensure generic layers (mappers, shared pipeline services) do not hardcode dimension- or provider-specific constants. The provider or factory should declare them via interface contracts.
-- **Commit Quality**: Check if any branch commit has a WIP/fixup/squash message or lacks the required ticket prefix.
+- **Architectural Leaks**: Ensure generic layers (mappers, shared pipeline services) do not hardcode dimension- or provider-specific constants. Use the repository’s documented boundaries and actual consumers as evidence. Do not prescribe a factory or interface unless that architecture is already required or a demonstrated defect needs it.
+- **Commit Quality**: Check if any branch commit has a WIP/fixup/squash message or violates an explicitly enabled repository commit policy. Keep advisory hygiene separate from correctness blockers.
 
 Finding: `[HIGH | needs review] path:line — trigger → consequence. Evidence: caller/type/test. Proposed fix: ...`
 

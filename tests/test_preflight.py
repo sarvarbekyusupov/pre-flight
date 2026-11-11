@@ -1,6 +1,4 @@
 import importlib.util
-import json
-import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -161,17 +159,32 @@ class PreflightTests(unittest.TestCase):
         r = pf.collect(self.repo)
         self.assertEqual(len(r.get('commit_hygiene_warnings', [])), 0)
 
+    def test_commit_policy_is_explicit(self):
+        self.git('checkout', '-b', 'bugfix/AB-123')
+        self.git('commit', '--allow-empty', '-m', 'Add useful behavior')
+        self.assertFalse(pf.collect(self.repo).get('commit_hygiene_warnings'))
+        strict = pf.collect(self.repo, commit_policy='conventional')
+        self.assertTrue(any('violates explicit conventional' in w for w in strict['commit_hygiene_warnings']))
+
+    def test_ticket_policy_and_breaking_messages(self):
+        self.git('checkout', '-b', 'bugfix/AB-123')
+        for subject in ['AB-123. Add behavior', 'feat!: new API', 'fix(api)!: new response']:
+            self.git('commit', '--allow-empty', '-m', subject)
+        self.assertFalse(pf.collect(self.repo, commit_policy='ticket-or-conventional').get('commit_hygiene_warnings'))
+        self.assertEqual(len(pf.collect(self.repo, commit_policy='conventional')['commit_hygiene_warnings']), 1)
+
+
     def test_installer_recovery(self):
         # Install first
         subprocess.run([sys.executable, str(ROOT / 'install.py'), '--repo', str(self.repo), '--init-rules'], check=True)
-        # Mock failure by turning a destination directory into a file, causing rename to fail
+        # A regular-file destination must be rejected before modifying any installation.
         dest_file = self.repo / '.claude/skills/pre-flight'
         shutil.rmtree(dest_file)
         dest_file.write_text('blocked')
         # Attempt force install
         res = subprocess.run([sys.executable, str(ROOT / 'install.py'), '--repo', str(self.repo), '--force'], capture_output=True)
         self.assertNotEqual(res.returncode, 0)
-        self.assertTrue(dest_file.is_file()) # Remained as the file (rollback succeeded)
+        self.assertTrue(dest_file.is_file()) # Rejected during preflight validation
         self.assertTrue((self.repo / '.gemini/skills/pre-flight/SKILL.md').exists()) # Untouched and restored
 
 

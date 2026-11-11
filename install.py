@@ -1,109 +1,110 @@
 #!/usr/bin/env python3
-"""Install pre-flight into a repository without overwriting existing skills (unless --force is used)."""
+"""Install pre-flight into a project; --force replaces an existing skill safely."""
 import argparse
 from pathlib import Path
 import shutil
 import tempfile
-import time
 
 TARGETS = {'claude': '.claude/skills', 'codex': '.agents/skills', 'gemini': '.gemini/skills'}
+
+
+def present(path):
+    return path.exists() or path.is_symlink()
+
+
+def install(source, root, agents, force=False, init_rules=False):
+    root = root.resolve()
+    source = source.resolve()
+    if not (source / 'SKILL.md').is_file():
+        raise ValueError('Skill source is missing SKILL.md.')
+    destinations = [root / TARGETS[a] / 'pre-flight' for a in agents]
+    for dest in destinations:
+        if not dest.resolve().is_relative_to(root):
+            raise ValueError(f'Destination escapes project: {dest}')
+        if present(dest) and not force:
+            raise ValueError(f'Already installed: {dest}; use --force to update.')
+        if present(dest) and not dest.is_symlink() and not dest.is_dir():
+            raise ValueError(f'Refusing non-directory destination: {dest}')
+        if dest.resolve() == source:
+            raise ValueError('Cannot replace the skill source with itself.')
+    rules = root / '.pre-flight' / 'rules.md'
+    if init_rules and not rules.resolve().is_relative_to(root):
+        raise ValueError('Rules destination escapes project.')
+    # Each staging directory lives beside its destination, including mount points.
+    transactions = []
+    rules_created = False
+    try:
+        for dest in destinations:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            stage = Path(tempfile.mkdtemp(prefix='.pre-flight-install-', dir=dest.parent))
+            entry = {'dest': dest, 'stage': stage, 'backup': stage / 'previous', 'installed': False}
+            transactions.append(entry)
+            shutil.copytree(source, stage / 'new', ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
+        for entry in transactions:
+            dest = entry['dest']
+            if present(dest):
+                if not force:
+                    raise ValueError(f'Destination appeared during installation: {dest}')
+                dest.rename(entry['backup'])
+            (entry['stage'] / 'new').rename(dest)
+            entry['installed'] = True
+        if init_rules and not present(rules):
+            rules.parent.mkdir(parents=True, exist_ok=True)
+            # Exclusive creation preserves rules created by another process.
+            template = (source / 'references' / 'rules.template.md').read_text()
+            try:
+                with rules.open('x') as handle:
+                    rules_created = True
+                    handle.write(template)
+            except FileExistsError:
+                pass
+    except BaseException as original_error:
+        recovery_errors = []
+        if rules_created:
+            try:
+                rules.unlink()
+            except OSError as exc:
+                recovery_errors.append(str(exc))
+        for entry in reversed(transactions):
+            try:
+                if entry['installed']:
+                    shutil.rmtree(entry['dest'])
+                if present(entry['backup']):
+                    entry['backup'].rename(entry['dest'])
+            except OSError as exc:
+                recovery_errors.append(f"{exc}; recovery files: {entry['stage']}")
+        if recovery_errors:
+            # Never delete a backup when restoration failed.
+            raise RuntimeError('Recovery incomplete: ' + '; '.join(recovery_errors)) from original_error
+        for entry in transactions:
+            shutil.rmtree(entry['stage'])
+        raise
+    for entry in transactions:
+        try:
+            shutil.rmtree(entry['stage'])
+        except OSError as exc:
+            print(f"Warning: installation succeeded; backup cleanup needed at {entry['stage']}: {exc}")
+    return destinations
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--repo', required=True, type=Path)
     parser.add_argument('--agent', choices=[*TARGETS, 'all'], default='all')
-    parser.add_argument('--init-rules', action='store_true', help='Initialize .pre-flight/rules.md from template if not present')
-    parser.add_argument('--force', action='store_true', help='Overwrite existing pre-flight installations')
+    parser.add_argument('--init-rules', action='store_true')
+    parser.add_argument('--force', action='store_true')
     args = parser.parse_args()
     root = args.repo.expanduser().resolve()
     if not root.is_dir():
         parser.error('Target repository directory must exist.')
-    source = Path(__file__).resolve().parent / 'pre-flight'
-    selected = TARGETS if args.agent == 'all' else {args.agent: TARGETS[args.agent]}
-    destinations = [root / path / 'pre-flight' for path in selected.values()]
-    
-    for destination in destinations:
-        if destination.exists() or destination.is_symlink():
-            if not args.force:
-                parser.error(f'Refusing to overwrite {destination}; use --force to update or inspect/remove the old copy explicitly.')
-        if not destination.resolve().is_relative_to(root):
-            parser.error('Refusing destination outside repository through symlinks.')
-            
-    installed = []
-    backups = []
-    timestamp = int(time.time())
-    
-    # Use a staging directory on the same filesystem to prevent cross-device (EXDEV) errors
-    staging_root = root / '.pre-flight' / 'staging'
-    staging_root.mkdir(parents=True, exist_ok=True)
-    
+    agents = list(TARGETS) if args.agent == 'all' else [args.agent]
     try:
-        with tempfile.TemporaryDirectory(dir=staging_root) as staging_dir:
-            staging_path = Path(staging_dir)
-            staged_dests = []
-            
-            # Phase 1: Stage all copies in isolation. Failures here do not touch the active installation.
-            for i, destination in enumerate(destinations):
-                staged = staging_path / f"staged_{i}"
-                shutil.copytree(source, staged, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
-                staged_dests.append((destination, staged))
-            
-            # Phase 2: Atomically swap the staged copies into place.
-            try:
-                for destination, staged in staged_dests:
-                    backup = None
-                    if destination.exists() or destination.is_symlink():
-                        if args.force:
-                            backup = destination.with_name(f"{destination.name}.bak.{timestamp}")
-                            # rename works on symlinks too (backs up the link itself)
-                            destination.rename(backup)
-                            backups.append((destination, backup))
-                    
-                    # Ensure parent directories exist before moving
-                    destination.parent.mkdir(parents=True, exist_ok=True)
-                    staged.rename(destination)
-                    installed.append(destination)
-            except Exception:
-                # Rollback Phase 2: restore backups and remove partial installations
-                for destination in installed:
-                    if destination.exists() or destination.is_symlink():
-                        if destination.is_symlink():
-                            destination.unlink()
-                        else:
-                            shutil.rmtree(destination)
-                for original, backup in backups:
-                    if backup.exists() or backup.is_symlink():
-                        backup.rename(original)
-                raise
-    except Exception:
-        raise
-    finally:
-        # Clean up the staging root if it's empty
-        if staging_root.exists() and not any(staging_root.iterdir()):
-            staging_root.rmdir()
-    
-    # Cleanup successful backups
-    for original, backup in backups:
-        if backup.exists() or backup.is_symlink():
-            if backup.is_symlink():
-                backup.unlink()
-            else:
-                shutil.rmtree(backup)
-
-    for destination in installed:
-        print(f'Installed: {destination}')
-
-    if args.init_rules:
-        rules_dir = root / '.pre-flight'
-        rules_file = rules_dir / 'rules.md'
-        template_file = source / 'references' / 'rules.template.md'
-        if not rules_file.exists() and template_file.exists():
-            rules_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(template_file, rules_file)
-            print(f'Initialized rules: {rules_file}')
-        elif rules_file.exists():
-            print(f'Existing rules file preserved: {rules_file}')
+        destinations = install(Path(__file__).resolve().parent / 'pre-flight', root, agents,
+                               args.force, args.init_rules)
+    except (ValueError, OSError, RuntimeError) as exc:
+        parser.exit(1, f'Installation failed: {exc}\n')
+    for dest in destinations:
+        print(f'Installed: {dest}')
 
 
 if __name__ == '__main__':

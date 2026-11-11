@@ -20,7 +20,7 @@ Or install with default team rules template (`.pre-flight/rules.md`):
 python3 install.py --repo /absolute/path/to/your-project --init-rules
 ```
 
-To update an existing installation, use the `--force` flag:
+To update an existing installation, use the `--force` flag. Updates stage copies beside each destination before swapping them. Existing directories and in-project symlinks are backed up; regular-file destinations are rejected before changes. Recoverable failures restore prior installations. If restoration itself fails, the error identifies retained recovery files; do not delete them. This is exception recovery, not crash-proof or concurrent-install support:
 
 ```sh
 python3 install.py --repo /absolute/path/to/your-project --force
@@ -85,7 +85,7 @@ review do not change the fact that check commands execute on the current worktre
 Metadata collection also surfaces:
 - `branch`: current active branch name
 - `commits`: list of commits between merge-base and HEAD
-- `commit_hygiene_warnings`: automated warnings for WIP/fixup/squash subjects and branch ticket prefix mismatches
+- `commit_hygiene_warnings`: advisory WIP/fixup/squash warnings; format warnings only when explicitly enabled
 - `affected_modules`: heuristic list of affected apps, packages, or top-level modules in monorepos. Treat as a starting point for test selection, not a definitive dependency graph (modifying a shared core library may affect downstream modules not explicitly listed).
 - `active_rules`: selectively filters `.pre-flight/rules.md` based on `--rules` substring matches (e.g. `--rules testing` matches `## Testing Rules`)
 
@@ -122,3 +122,40 @@ Checks are sequential; dependencies and test selection are handled by the agent.
 - Claude Code: https://code.claude.com/docs/en/skills
 - Codex: https://developers.openai.com/codex/skills
 - Gemini CLI: https://geminicli.com/docs/cli/skills/
+
+## Explicit commit policy
+
+Default: `--commit-policy off`. Ticket-style branch names do not enable a policy.
+WIP warnings remain advisory; the agent uses documented team rules to decide
+whether they block review.
+
+```sh
+python3 pre-flight/scripts/preflight.py collect --repo /path/to/project --commit-policy conventional
+python3 pre-flight/scripts/preflight.py collect --repo /path/to/project --commit-policy ticket-or-conventional
+```
+
+The second policy accepts a ticket derived from feature/bugfix/hotfix branches
+or a Conventional Commit, including breaking-change `!` notation. On branches
+without a recognized ticket it accepts Conventional Commits. No policy rewrites
+history automatically.
+
+## Review contract
+
+The skill establishes required checks from CI and project documentation before
+running them. Unknown or skipped required checks prevent a ready verdict.
+Each finding must connect changed behavior, a reachable input/caller, and an
+observable consequence to evidence. Architecture follows repository conventions;
+new interfaces or factories are not universal requirements.
+
+`--rules` filters matching level-two Markdown headings for focused commentary.
+It does not turn off mandatory checks or critical security/correctness reporting.
+The agent reports omitted areas and cannot present a focused review as full approval.
+
+## Behavioral evaluation
+
+See [evals/README.md](evals/README.md) for synthetic bug/clean fixtures and a repeatable
+scoring procedure. These small cases are smoke tests, not evidence of production
+accuracy or equal behavior across model providers.
+
+A small workflow smoke evaluation is recorded in [evals/results.md](evals/results.md).
+GitHub Actions runs the regression suite on Linux/macOS with Python 3.9 and 3.12.
