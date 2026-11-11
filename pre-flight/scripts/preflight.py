@@ -24,7 +24,7 @@ def paths(repo, *args):
     return [os.fsdecode(p) for p in git(repo, *args).split(b'\0') if p]
 
 
-def collect(repo, scope='all', base=None):
+def collect(repo, scope='all', base=None, rules_filters=None):
     root = Path(os.fsdecode(git(repo, 'rev-parse', '--show-toplevel')).strip())
     head = git(root, 'rev-parse', '--verify', 'HEAD', optional=True)
     if head is None:
@@ -98,6 +98,30 @@ def collect(repo, scope='all', base=None):
     if affected_modules:
         result['affected_modules'] = affected_modules
 
+    if rules_filters:
+        rules_path = root / '.pre-flight' / 'rules.md'
+        if rules_path.exists():
+            content = rules_path.read_text()
+            filtered_sections = []
+            current_section = []
+            include = False
+            for line in content.splitlines():
+                if line.startswith('## '):
+                    if current_section and include:
+                        filtered_sections.append('\n'.join(current_section))
+                    current_section = [line]
+                    header = line[3:].strip().lower()
+                    include = any(f.lower() in header for f in rules_filters)
+                elif current_section:
+                    current_section.append(line)
+            if current_section and include:
+                filtered_sections.append('\n'.join(current_section))
+            
+            if filtered_sections:
+                result['active_rules'] = '\n\n'.join(filtered_sections)
+            else:
+                result['warnings'].append(f'No sections in rules.md matched filters: {rules_filters}')
+
     result['execution_scope'] = 'Checks execute against current working tree, regardless of review scope.'
     return result
 
@@ -147,6 +171,7 @@ def main():
     c.add_argument('--repo', default='.')
     c.add_argument('--scope', choices=['all', 'staged', 'working', 'branch'], default='all')
     c.add_argument('--base')
+    c.add_argument('--rules', action='append', default=[], help='Filter rules.md by header substring')
     r = sub.add_parser('check')
     r.add_argument('--repo', default='.')
     r.add_argument('--name', required=True)
@@ -156,7 +181,7 @@ def main():
     args = parser.parse_args()
     try:
         if args.action == 'collect':
-            result = collect(args.repo, args.scope, args.base)
+            result = collect(args.repo, args.scope, args.base, rules_filters=args.rules)
             code = 1 if result['conflicts'] else 0
         else:
             command = args.command[1:] if args.command[:1] == ['--'] else args.command

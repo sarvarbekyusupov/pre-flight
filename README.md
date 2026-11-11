@@ -20,6 +20,12 @@ Or install with default team rules template (`.pre-flight/rules.md`):
 python3 install.py --repo /absolute/path/to/your-project --init-rules
 ```
 
+To update an existing installation, use the `--force` flag:
+
+```sh
+python3 install.py --repo /absolute/path/to/your-project --force
+```
+
 Or install for one CLI:
 
 ```sh
@@ -41,7 +47,7 @@ new skill is not yet visible. Gemini can also discover `.agents/skills`; the
 identical Gemini-specific copy provides a standalone installation. Never assume
 Gemini exposes `/pre-flight` as a custom command.
 
-The installer refuses existing destinations rather than replacing customizations.
+The installer refuses existing destinations rather than replacing customizations, unless `--force` is provided.
 It does not alter global CLI settings, install packages, enable hooks or contact a server.
 Commit installed files to your team repository if you want teammates to use them.
 
@@ -60,6 +66,7 @@ AI concerns. Fixes are proposed by default and applied when requested.
 ```sh
 python3 pre-flight/scripts/preflight.py collect --repo /path/to/project --base origin/dev
 python3 pre-flight/scripts/preflight.py collect --repo /path/to/project --scope staged
+python3 pre-flight/scripts/preflight.py collect --repo /path/to/project --rules test --rules architecture
 python3 pre-flight/scripts/preflight.py check --repo /path/to/project --name types --timeout 120 -- npm run typecheck
 python3 pre-flight/scripts/preflight.py check --repo /path/to/project --name test --env TZ=UTC -- pnpm test
 ```
@@ -80,6 +87,7 @@ Metadata collection also surfaces:
 - `commits`: list of commits between merge-base and HEAD
 - `commit_hygiene_warnings`: automated warnings for WIP/fixup/squash subjects and branch ticket prefix mismatches
 - `affected_modules`: affected apps, packages, or top-level modules in monorepos to allow scoped test execution
+- `active_rules`: selectively filters `.pre-flight/rules.md` based on `--rules` substring matches (e.g. `--rules testing` matches `## Testing Rules`)
 
 JSON check statuses: PASS, FAIL, TIMEOUT, ERROR. Output is capped at 16 KB;
 truncation is disclosed. Exit codes: 0 for successful collection/passed check,

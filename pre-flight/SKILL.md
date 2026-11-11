@@ -29,7 +29,7 @@ Use [review.md](references/review.md). Read `.pre-flight/rules.md` when present.
 Prioritize concrete regressions and review risks:
 - **Test Vacuity**: Scrutinize whether added or modified tests actively execute the intended failure or merge paths (e.g. verifying traits merging requires parent traits to exist in the fixture).
 - **Architectural Decoupling**: Check that shared mappers and utilities do not hardcode domain-specific attributes; domain factories must expose capabilities via declared interfaces.
-- **Commit & Git Hygiene**: Evaluate `commit_hygiene_warnings` for WIP messages, missing ticket prefixes, or invalid branch naming.
+- **Commit & Git Hygiene**: Evaluate `commit_hygiene_warnings` for WIP messages, missing ticket prefixes, or invalid branch naming. If a commit hygiene warning is found (e.g. a WIP commit or missing ticket prefix), explicitly offer to auto-fix it by running `git commit --amend -m "<TICKET>. <Cleaned Subject>"`.
 
 Give severity, file:line, trigger, consequence, evidence and minimal fix. Separate observations from hypotheses. Omit speculation and group duplicates. Report at most three noncritical AI concerns; never hide additional critical issues.
 
