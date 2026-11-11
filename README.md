@@ -86,7 +86,7 @@ Metadata collection also surfaces:
 - `branch`: current active branch name
 - `commits`: list of commits between merge-base and HEAD
 - `commit_hygiene_warnings`: automated warnings for WIP/fixup/squash subjects and branch ticket prefix mismatches
-- `affected_modules`: affected apps, packages, or top-level modules in monorepos to allow scoped test execution
+- `affected_modules`: heuristic list of affected apps, packages, or top-level modules in monorepos. Treat as a starting point for test selection, not a definitive dependency graph (modifying a shared core library may affect downstream modules not explicitly listed).
 - `active_rules`: selectively filters `.pre-flight/rules.md` based on `--rules` substring matches (e.g. `--rules testing` matches `## Testing Rules`)
 
 JSON check statuses: PASS, FAIL, TIMEOUT, ERROR. Output is capped at 16 KB;
@@ -103,7 +103,6 @@ reported as SKIPPED, never clean.
 Add `.pre-flight/rules.md` to the target repository (scaffolded automatically with
 `--init-rules` from `pre-flight/references/rules.template.md`). Include concrete
 rules, architectural boundaries, test non-vacuity rules, and MR conventions.
-No DanAds policies are assumed by default.
 
 ## Validation and limits
 
@@ -114,7 +113,7 @@ literal argv handling and installation collision protection.
 
 This is a tested helper plus an agent workflow, not a standalone AI review engine.
 The host CLI provides the model and editing tools. End-to-end review quality in
-a real DanAds repository has not been benchmarked. Model processing can be remote
+a real repository has not been benchmarked. Model processing can be remote
 according to your CLI/account settings. No approval prediction score is fabricated.
 Checks are sequential; dependencies and test selection are handled by the agent.
 

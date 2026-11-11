@@ -27,19 +27,36 @@ def main():
         if not destination.resolve().is_relative_to(root):
             parser.error('Refusing destination outside repository through symlinks.')
     installed = []
+    backups = []
     try:
         for destination in destinations:
+            backup = None
             if destination.exists() and args.force:
                 if destination.is_symlink():
                     destination.unlink()
                 else:
-                    shutil.rmtree(destination)
+                    backup = destination.with_name(destination.name + '.bak')
+                    if backup.exists():
+                        shutil.rmtree(backup)
+                    destination.rename(backup)
+                    backups.append((destination, backup))
             shutil.copytree(source, destination, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
             installed.append(destination)
     except Exception:
+        # Rollback all installations and restore backups
         for destination in installed:
-            shutil.rmtree(destination)
+            if destination.exists():
+                shutil.rmtree(destination)
+        for original, backup in backups:
+            if backup.exists():
+                backup.rename(original)
         raise
+    
+    # Cleanup backups on success
+    for original, backup in backups:
+        if backup.exists():
+            shutil.rmtree(backup)
+
     for destination in installed:
         print(f'Installed: {destination}')
 

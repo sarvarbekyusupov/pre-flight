@@ -107,7 +107,7 @@ class PreflightTests(unittest.TestCase):
         self.assertEqual(r['branch'], 'bugfix/OB-213')
         self.assertEqual(len(r['commits']), 2)
         self.assertTrue(any('work-in-progress' in w for w in r.get('commit_hygiene_warnings', [])))
-        self.assertTrue(any("does not start with 'OB-213. '" in w for w in r.get('commit_hygiene_warnings', [])))
+        self.assertTrue(any("lacks ticket 'OB-213' prefix or Conventional Commit format:" in w for w in r.get('commit_hygiene_warnings', [])))
 
     def test_affected_modules(self):
         (self.repo / 'apps' / 'gam').mkdir(parents=True)
@@ -134,6 +134,21 @@ class PreflightTests(unittest.TestCase):
         self.assertTrue(rules_path.exists())
         self.assertIn('Pre-Flight Repository Rules Template', rules_path.read_text())
         dest_tmp.cleanup()
+
+    def test_commit_hygiene_conventional_and_fixup(self):
+        self.git('checkout', '-b', 'bugfix/OB-999')
+        (self.repo / 'price.py').write_text('price = 10\n')
+        self.git('commit', '-am', 'fixup! OB-999. some fix')
+        (self.repo / 'price.py').write_text('price = 11\n')
+        self.git('commit', '-am', 'squash! OB-999. another fix')
+        (self.repo / 'price.py').write_text('price = 12\n')
+        self.git('commit', '-am', 'feat(core): add pricing')
+        r = pf.collect(self.repo)
+        warnings = r.get('commit_hygiene_warnings', [])
+        self.assertTrue(any('fixup!' in w for w in warnings))
+        self.assertTrue(any('squash!' in w for w in warnings))
+        self.assertFalse(any('feat(core)' in w for w in warnings))
+
 
 
 if __name__ == '__main__':

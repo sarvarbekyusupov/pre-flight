@@ -16,7 +16,7 @@ Reduce avoidable CI failures and review iterations. Never promise approval or CI
 
 ## Verify checks
 
-1. Inspect CI configuration, package scripts, wrappers and lifecycle hooks before executing. Find existing lint/type/build/test commands; account for monorepo boundaries and lockfiles. In monorepos, leverage `affected_modules` to run focused checks against changed packages/apps rather than running entire root suites that may time out. Do not install dependencies, deploy, run migrations or send data externally merely to review code. Respect tool permissions.
+1. Inspect CI configuration, package scripts, wrappers and lifecycle hooks before executing. Find existing lint/type/build/test commands; account for monorepo boundaries and lockfiles. In monorepos, leverage `affected_modules` to run focused checks against changed packages/apps. Treat `affected_modules` as a heuristic starting point, not a guarantee that downstream dependencies are unaffected. Do not install dependencies, deploy, run migrations or send data externally merely to review code. Respect tool permissions.
 2. Run appropriate non-mutating commands through `python3 <skill-dir>/scripts/preflight.py check --repo <repo> --name <label> --timeout 120 [--env KEY=VALUE] -- <executable> <args...>`. Pass `--env TZ=UTC` when testing code sensitive to timezone parity. It executes explicit argv without a shell. Prefer installed executables and documented commands. It does not automatically discover or execute package scripts.
 3. Mark checks PASS, FAIL, TIMEOUT, ERROR or SKIPPED with command, status and useful redacted evidence. Skipped is not passed. Distinguish observed project-wide failures from failures proven to be introduced by this change.
 4. Commands run against the current worktree, not an isolated staged/committed snapshot. For staged or branch scope with differing local content, label results worktree-only or use an explicitly authorized isolated checkout. Never stash/reset/overwrite user edits.
@@ -24,12 +24,12 @@ Reduce avoidable CI failures and review iterations. Never promise approval or CI
 
 ## Review behavior
 
-Use [review.md](references/review.md). Read `.pre-flight/rules.md` when present. Distinguish documented requirements from suggestions; never invent DanAds policies.
+Use [review.md](references/review.md). Read `.pre-flight/rules.md` when present. Distinguish documented requirements from suggestions.
 
 Prioritize concrete regressions and review risks:
 - **Test Vacuity**: Scrutinize whether added or modified tests actively execute the intended failure or merge paths (e.g. verifying traits merging requires parent traits to exist in the fixture).
 - **Architectural Decoupling**: Check that shared mappers and utilities do not hardcode domain-specific attributes; domain factories must expose capabilities via declared interfaces.
-- **Commit & Git Hygiene**: Evaluate `commit_hygiene_warnings` for WIP messages, missing ticket prefixes, or invalid branch naming. If a commit hygiene warning is found (e.g. a WIP commit or missing ticket prefix), explicitly offer to auto-fix it by running `git commit --amend -m "<TICKET>. <Cleaned Subject>"`.
+- **Commit & Git Hygiene**: Evaluate `commit_hygiene_warnings` for WIP messages or invalid format. If a hygiene warning is found for the HEAD commit, explicitly offer to auto-fix it by running `git commit --only --amend -m "<Cleaned Subject>"` (using `--only` prevents accidentally committing unstaged/staged files). For older commits, advise an interactive rebase (`git rebase -i`) but explicitly warn the user about rewriting history.
 
 Give severity, file:line, trigger, consequence, evidence and minimal fix. Separate observations from hypotheses. Omit speculation and group duplicates. Report at most three noncritical AI concerns; never hide additional critical issues.
 
